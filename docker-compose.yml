@@ -1,108 +1,92 @@
-version: '3.8'
-
 services:
-  # PostgreSQL для databaseModule
+
+  kafka:
+    image: bitnami/kafka:4.0.0
+    container_name: kafka
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_PROCESS_ROLES: "broker,controller"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CREATE_TOPICS: "topic1:1:1,topic2:1:1"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/bitnami/kafka
+
+
+
   postgres:
     image: postgres:16
+    container_name: postgres
     environment:
-      POSTGRES_DB: mydb
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
 
-  # ClickHouse для clickhouseModule
+
   clickhouse:
     image: clickhouse/clickhouse-server:latest
-    environment:
-      CLICKHOUSE_DB: logs
+    container_name: clickhouse
     ports:
-      - "8123:8123"   # HTTP-интерфейс
-      - "9000:9000"   # нативный клиент
+      - "8123:8123"
+      - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
 
-  # Apache Kafka (без ZooKeeper) с использованием образа apache/kafka:latest
-  kafka:
-    image: apache/kafka:latest
-    environment:
-      - KAFKA_PROCESS_ROLES=broker,controller
-      - KAFKA_NODE_ID=1
-      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - ALLOW_PLAINTEXT_LISTENER=yes
-    ports:
-      - "9092:9092"
-      - "9093:9093"
 
-  # Контейнер для инициализации топиков Kafka
-  kafka-init:
-    image: apache/kafka:latest
+  gateway:
+    build:
+      context: ./GatewayModule
+      dockerfile: Dockerfile
+    container_name: GatewayModule
     depends_on:
       - kafka
-    entrypoint: ["/bin/sh", "-c", "/scripts/init-kafka.sh"]
-    volumes:
-      - ./init-kafka.sh:/scripts/init-kafka.sh
-
-  # Микросервис databaseModule (бизнес-логика + PostgreSQL)
-  databaseModule:
-    build:
-      context: ./databaseModule
-      dockerfile: Dockerfile
     ports:
-      - "8081:8081"
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+
+
+  database:
+    container_name: DatabaseModule
+    build:
+      context: ./DatabaseModule
+      dockerfile: Dockerfile
     depends_on:
       - postgres
       - kafka
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mydb
-      SPRING_DATASOURCE_USERNAME: user
-      SPRING_DATASOURCE_PASSWORD: password
-      KAFKA_BROKER: kafka:9092
 
-  # Микросервис gatewayModule (REST API для мобильного приложения)
-  gatewayModule:
-    build:
-      context: ./gatewayModule
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    depends_on:
-      - databaseModule
-      - kafka
-    environment:
-      KAFKA_BROKER: kafka:9092
 
-  # Микросервис clickhouseModule (логирование)
-  clickhouseModule:
+  clickhouse-module:
+    container_name: ClickhouseModule
     build:
-      context: ./clickhouseModule
+      context: ./ClickhouseModule
       dockerfile: Dockerfile
-    ports:
-      - "8082:8082"
     depends_on:
       - clickhouse
       - kafka
-    environment:
-      KAFKA_BROKER: kafka:9092
-      CLICKHOUSE_URL: http://clickhouse:8123
 
-  # Микросервис loadModule (нагрузочное тестирование)
-  loadModule:
+
+  load:
     build:
-      context: ./loadModule
+      context: ./LoadTestModule
       dockerfile: Dockerfile
-    ports:
-      - "8083:8083"
+    container_name: loadModule
     depends_on:
-      - gatewayModule
-      - kafka
-    environment:
-      GATEWAY_URL: http://gatewayModule:8080
+      - gateway
+
 
 volumes:
-  postgres_data:
+  kafka_data:
+  pgdata:
   clickhouse_data:
