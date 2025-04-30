@@ -1,0 +1,24 @@
+package itmo.databasemodule.domain.location
+
+import jakarta.persistence.*
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
+
+@Entity
+@Table(name = "stations")
+data class Station(
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id", nullable = false, unique = true)
+    var id: Int = 0,
+
+    @field:NotNull
+    @field:NotBlank
+    @Column(name = "name", nullable = false)
+    var name: String,
+
+    @field:NotNull
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "city_id", nullable = false)
+    var city: City,
+)
